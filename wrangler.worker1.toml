@@ -1,0 +1,5 @@
+name = "worker1"
+type = "javascript"
+main = "src/worker1/index.js"
+compatibility_date = "2025-07-16"
+# account_id = "your_account_id_here"

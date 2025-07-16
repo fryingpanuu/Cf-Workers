@@ -1,0 +1,7 @@
+name = "cloudflare-worker-demo"
+type = "javascript"
+main = "src/index.js"
+compatibility_date = "2025-07-16"
+
+# Uncomment and set your account_id for deployment
+# account_id = "your_account_id_here"

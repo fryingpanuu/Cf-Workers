@@ -1,0 +1,15 @@
+{
+  "name": "cloudflare-worker-demo",
+  "version": "1.0.0",
+  "description": "Cloudflare Worker Hello World setup",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "wrangler dev",
+    "deploy": "wrangler publish",
+    "start:dob": "wrangler dev --config wrangler.dob-worker.toml",
+    "deploy:dob": "wrangler deploy --config wrangler.dob-worker.toml"
+  },
+  "devDependencies": {
+    "wrangler": "^3.0.0"
+  }
+}

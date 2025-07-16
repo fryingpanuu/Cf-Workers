@@ -1,0 +1,6 @@
+name = "dob-worker"
+type = "javascript"
+main = "src/dob-worker/index.js"
+compatibility_date = "2025-07-16"
+compatibility_flags = ["nodejs_compat"]
+# account_id = "your_account_id_here"
