@@ -1,350 +1,236 @@
 import crypto from "crypto";
 
-/**
- * Generates random client info and user agent for request obfuscation
- */
-function generateRandomClientInfo() {
-  // Authentic Android versions and devices
-  const androidVersions = [
-    { version: "9", build: "PQ3A.190605.03081104" },
-    { version: "10", build: "QP1A.191005.007.A3" },
-    { version: "11", build: "RP1A.200720.011" },
-    { version: "12", build: "S1B.220414.015" },
-    { version: "13", build: "TQ2A.230405.003" },
-  ];
+const SECRET_B64 = "76iRl07s0xSN9jqmEWAt79EBJZulIQIsV64FZr2O";
 
-  // Real Redmi device models
-  const redmiDevices = [
-    { model: "23078RKD5C", brand: "Redmi" },
-    { model: "2201117TY", brand: "Redmi" },
-    { model: "2201117TG", brand: "Redmi" },
-    { model: "22101316G", brand: "Redmi" },
-    { model: "21121210G", brand: "Redmi" },
-    { model: "M2012K11AG", brand: "Redmi" },
-    { model: "M2007J20CG", brand: "Redmi" },
-  ];
+const DEVICES = [
+  { model: "23122PCD1I", brand: "POCO" },
+  { model: "23078RKD5C", brand: "Redmi" },
+  { model: "2201117TY", brand: "Redmi" },
+];
 
-  // Real GAIDs (Google Advertising IDs) - these are example formats
-  const gaids = [
-    "c65f05f7-dd57-4d5e-8089-f99714d246cd",
-    "a1b2c3d4-e5f6-7890-1234-567890abcdef",
-    "f8e7d6c5-b4a3-9281-7065-432109876543",
-    "12345678-90ab-cdef-1234-567890abcdef",
-    "abcdef12-3456-7890-abcd-ef1234567890",
-  ];
+const ANDROID = [
+  { version: "16", build: "BP2A.250605.031.A3" },
+  { version: "15", build: "AP3A.240905.015" },
+  { version: "14", build: "UP1A.231105.003" },
+];
 
-  // Device IDs (MD5 hashes of device info)
-  const deviceIds = [
-    "58bb277ebefaeb20f46dca639f173bc6",
-    "a1b2c3d4e5f6789012345678901234ab",
-    "f8e7d6c5b4a39281706543210987654c",
-    "123456789012345678901234567890ab",
-    "abcdef123456789012345678901234cd",
-  ];
+const VC_LIST = [50020067, 50020068, 50020070];
 
-  // Version codes (incremental)
-  const versionCodes = [50020042, 50020043, 50020044, 50020045, 50020046];
-
-  // Network types for variety
-  const networkTypes = ["NETWORK_WIFI", "NETWORK_MOBILE"];
-
-  // Timezones for variety
-  const timezones = [
-    "Asia/Kolkata",
-    "Asia/Shanghai",
-    "Asia/Tokyo",
-    "America/New_York",
-    "Europe/London",
-  ];
-
-  // Generate fresh random IDs for each request
-  const generateRandomGAID = () => {
-    const chars = "0123456789abcdef";
-    const sections = [8, 4, 4, 4, 12];
-    return sections
-      .map((length) => {
-        let result = "";
-        for (let i = 0; i < length; i++) {
-          result += chars[Math.floor(Math.random() * chars.length)];
-        }
-        return result;
-      })
-      .join("-");
-  };
-
-  const generateRandomDeviceId = () => {
-    const chars = "0123456789abcdef";
-    let result = "";
-    for (let i = 0; i < 32; i++) {
-      result += chars[Math.floor(Math.random() * chars.length)];
-    }
-    return result;
-  };
-
-  // Select random values
-  const randomAndroid =
-    androidVersions[Math.floor(Math.random() * androidVersions.length)];
-  const randomDevice =
-    redmiDevices[Math.floor(Math.random() * redmiDevices.length)];
-  const randomGaid =
-    Math.random() > 0.5
-      ? gaids[Math.floor(Math.random() * gaids.length)]
-      : generateRandomGAID();
-  const randomDeviceId =
-    Math.random() > 0.5
-      ? deviceIds[Math.floor(Math.random() * deviceIds.length)]
-      : generateRandomDeviceId();
-  const randomVersionCode =
-    versionCodes[Math.floor(Math.random() * versionCodes.length)];
-  const randomNetwork =
-    networkTypes[Math.floor(Math.random() * networkTypes.length)];
-  const randomTimezone =
-    timezones[Math.floor(Math.random() * timezones.length)];
-
-  // Generate user agent
-  const userAgent = `com.community.oneroom/${randomVersionCode} (Linux; U; Android ${randomAndroid.version}; en_US; ${randomDevice.model}; Build/${randomAndroid.build}; Cronet/135.0.7012.3)`;
-
-  // Generate client info
-  const clientInfo = {
-    package_name: "com.community.oneroom",
-    version_name: "3.0.03.0529.03",
-    version_code: randomVersionCode,
-    os: "android",
-    os_version: randomAndroid.version,
-    install_ch: "ps",
-    device_id: randomDeviceId,
-    install_store: "ps",
-    gaid: randomGaid,
-    brand: randomDevice.brand,
-    model: randomDevice.model,
-    system_language: "en",
-    net: randomNetwork,
-    region: "US",
-    timezone: randomTimezone,
-    sp_code: "40401",
-    "X-Play-Mode": "2",
-  };
-
-  return {
-    userAgent,
-    clientInfo: JSON.stringify(clientInfo),
-  };
+function hex(n) {
+  const chars = "0123456789abcdef";
+  let r = "";
+  for (let i = 0; i < n; i++) r += chars[Math.floor(Math.random() * 16)];
+  return r;
 }
 
-/**
- * Generates the x-tr-signature token based on the Android app's algorithm
- */
-function generateXTrSignature(url, requestBody = "", options = {}) {
-  const {
-    method = "POST",
-    contentType = "application/json; charset=utf-8",
-    timeOffset = 0,
-    useAlternateKey = false,
-  } = options;
+function gaid() {
+  return [8, 4, 4, 4, 12].map((n) => hex(n)).join("-");
+}
 
-  // Signing keys from the Android code
-  const signingKeys = {
-    primary: "76iRl07s0xSN9jqmEWAt79EBJZulIQIsV64FZr2O",
-    alternate: "Xqn2nnO41/L92o1iuXhSLHTbXvY4Z5ZZ62m8mSLA",
-  };
+function pick(arr) {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
 
-  const signingKey = useAlternateKey
-    ? signingKeys.alternate
-    : signingKeys.primary;
-  const timestamp = Date.now() + timeOffset;
+function signRequest({ method, url, contentType = "application/json; charset=utf-8", body = null, timestampMs = Date.now() }) {
+  const u = new URL(url);
+  const rawQuery = u.search.slice(1);
+  const m = method.toUpperCase();
 
-  // Process request body
-  let bodyHash = "";
-  let contentLength = 0;
-
-  if (requestBody && requestBody.length > 0) {
-    let processedBody = requestBody;
-    if (Buffer.byteLength(processedBody, "utf8") > 102400) {
-      processedBody = processedBody.substring(0, 102400);
-    }
-
-    // Calculate MD5 hash of the body
-    bodyHash = crypto
-      .createHash("md5")
-      .update(processedBody, "utf8")
-      .digest("hex");
-    contentLength = Buffer.byteLength(processedBody, "utf8");
+  const isGet = m === "GET";
+  let signedPath = u.pathname;
+  if (isGet && rawQuery) {
+    const sorted = rawQuery
+      .split("&")
+      .map((p) => {
+        const i = p.indexOf("=");
+        const k = i < 0 ? p : p.slice(0, i);
+        const v = i < 0 ? "" : p.slice(i + 1);
+        return [decodeURIComponent(k), decodeURIComponent(v)];
+      })
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .map(([k, v]) => `${k}=${v}`)
+      .join("&");
+    signedPath += `?${sorted}`;
   }
 
-  // Process URL to get path and sorted query parameters
-  const urlObj = new URL(url);
-  let urlPath = urlObj.pathname;
-
-  if (urlObj.search) {
-    const params = new URLSearchParams(urlObj.search);
-    const sortedParams = [];
-
-    for (const [key, value] of params.entries()) {
-      if (key !== "") {
-        sortedParams.push({
-          key: decodeURIComponent(key),
-          value: decodeURIComponent(value),
-        });
-      }
-    }
-
-    sortedParams.sort((a, b) => a.key.localeCompare(b.key));
-
-    if (sortedParams.length > 0) {
-      const queryString = sortedParams
-        .map((p) => `${p.key}=${p.value}`)
-        .join("&");
-      urlPath += `?${queryString}`;
-    }
+  let bodyMd5 = "";
+  let contentLength = "";
+  if (body && body.length > 0) {
+    bodyMd5 = crypto.createHash("md5").update(body, "utf8").digest("hex");
+    contentLength = String(Buffer.byteLength(body, "utf8"));
   }
 
-  // Construct the string to be signed
-  const stringToSign = [
-    method.toUpperCase(),
-    "",
-    contentType || "",
-    contentLength > 0 ? contentLength.toString() : "",
-    timestamp.toString(),
-    bodyHash,
-    urlPath,
+  const toSign = [
+    m,
+    "*/*", // accept (fetch/curl auto-add */* on the wire, we sign to match)
+    body ? contentType : "",
+    contentLength,
+    String(timestampMs),
+    bodyMd5,
+    signedPath,
   ].join("\n");
 
-  // Generate HMAC-MD5 signature
-  const key = Buffer.from(signingKey, "base64");
-  const hmac = crypto.createHmac("md5", key);
-  hmac.update(stringToSign, "utf8");
-  const signature = hmac.digest("base64");
-
-  return `${timestamp}|2|${signature}`;
+  const key = Buffer.from(SECRET_B64, "base64");
+  const sig = crypto.createHmac("md5", key).update(toSign, "utf8").digest("base64");
+  return `${timestampMs}|2|${sig}`;
 }
 
-/**
- * Makes authenticated request to the API
- */
-async function makeAuthenticatedRequest(url, options = {}) {
+function generateClientInfo() {
+  const device = pick(DEVICES);
+  const av = pick(ANDROID);
+  const vc = pick(VC_LIST);
+  const g = gaid();
+  const did = hex(32);
+
+  return {
+    userAgent: `com.community.oneroom/${vc} (Linux; U; Android ${av.version}; en_US; ${device.model}; Build/${av.build}; Cronet/148.0.7778.60)`,
+    clientInfo: JSON.stringify({
+      package_name: "com.community.oneroom",
+      version_name: "3.0.09.1014.03",
+      version_code: vc,
+      os: "android",
+      os_version: av.version,
+      install_ch: "google-play",
+      device_id: did,
+      install_store: "gp",
+      gaid: g,
+      brand: device.brand,
+      model: device.model,
+      system_language: "en",
+      net: "NETWORK_WIFI",
+      region: "US",
+      timezone: "Asia/Calcutta",
+      sp_code: "405858",
+    }),
+  };
+}
+
+const BASE_URL = "https://apig.inmoviebox.com";
+
+async function makeApiRequest(urlOrPath, options = {}) {
   const {
-    method = "POST",
+    method = "GET",
     body = null,
-    headers = {},
-    authorization = "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjI4NTI5MDIxODk3Njc1NzcyNDgsImV4cCI6MTc2MDM3NDU5NywiaWF0IjoxNzUyNTk4Mjk3fQ.8I4f8RoU0JoXkgJeFpjp3R_owfRbUzBjVaB5QKtUBzM",
+    authorization = "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjI2MDU1NDM3NjM5MzQxNzE5MjgsImV4cCI6MTc4NzY1NDY5MywiaWF0IjoxNzc5ODc4MzkzfQ.dUX9F_JSed-CiWANFqpCfmNNb3BQyQ1NqpfYzpLxvMI",
+    useFullUrl = false,
   } = options;
 
-  const bodyString = body ? JSON.stringify(body) : "";
+  const fullUrl = useFullUrl || urlOrPath.startsWith("http")
+    ? urlOrPath
+    : `${BASE_URL}${urlOrPath}`;
+
+  const bodyStr = body ? JSON.stringify(body) : null;
   const contentType = "application/json; charset=utf-8";
+  const ts = Date.now();
 
-  // Generate signature
-  const signature = generateXTrSignature(url, bodyString, {
-    method,
-    contentType,
-  });
+  const sig = signRequest({ method, url: fullUrl, contentType, body: bodyStr, timestampMs: ts });
+  const info = generateClientInfo();
 
-  const { userAgent, clientInfo } = generateRandomClientInfo();
-
-  const requestHeaders = {
-    "Accept-Encoding": "gzip, deflate, br",
+  const headers = {
+    Accept: "*/*",
+    "Accept-Encoding": "gzip",
     Authorization: authorization,
     Connection: "keep-alive",
-    "Content-Type": contentType,
-    "User-Agent": userAgent,
-    "X-Client-Info": clientInfo,
+    "User-Agent": info.userAgent,
+    "X-Client-Info": info.clientInfo,
     "X-Client-Status": "1",
-    "X-Play-Mode": "2",
-    "x-tr-signature": signature,
-    ...headers,
+    "X-Play-Mode": "1",
+    "X-Family-Mode": "0",
+    "x-tr-signature": sig,
   };
-
-  if (bodyString) {
-    requestHeaders["Content-Length"] = Buffer.byteLength(bodyString, "utf8");
+  if (bodyStr) {
+    headers["Content-Type"] = contentType;
   }
 
-  const response = await fetch(url, {
-    method,
-    headers: requestHeaders,
-    body: bodyString || undefined,
+  const resp = await fetch(fullUrl, {
+    method: method.toUpperCase(),
+    headers,
+    body: bodyStr,
   });
 
-  return response;
+  // Handle 407 time sync (GW.4410)
+  if (resp.status === 407) {
+    try {
+      const cloned = resp.clone();
+      const errBody = await cloned.text();
+      const err = JSON.parse(errBody);
+      if (err.metadata?.errorCode === "GW.4410") {
+        const timeBeanB64 = err.metadata?.errorMsg;
+        if (timeBeanB64) {
+          const raw = Buffer.from(timeBeanB64, "base64").toString("utf8");
+          const timeBean = JSON.parse(raw);
+          const offset = timeBean.time - Date.now();
+          const ts2 = Date.now() + offset;
+          headers["x-tr-signature"] = signRequest({
+            method,
+            url: fullUrl,
+            contentType,
+            body: bodyStr,
+            timestampMs: ts2,
+          });
+          return await fetch(fullUrl, {
+            method: method.toUpperCase(),
+            headers,
+            body: bodyStr,
+          });
+        }
+      }
+    } catch { /* pass */ }
+  }
+
+  return resp;
 }
 
 async function handleRequest(request) {
-  // Enable CORS
   const corsHeaders = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization",
   };
 
-  // Handle preflight requests
   if (request.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const url = new URL(request.url);
-
-    // Parse request parameters
-    let requestData;
+    let data;
     if (request.method === "POST") {
-      requestData = await request.json();
+      data = await request.json();
     } else {
-      // For GET requests, use query parameters
-      requestData = {
-        url: url.searchParams.get("url"),
-        method: url.searchParams.get("method") || "GET",
-        body: url.searchParams.get("body")
-          ? JSON.parse(url.searchParams.get("body"))
-          : null,
-        authorization: url.searchParams.get("authorization"),
+      const u = new URL(request.url);
+      data = {
+        url: u.searchParams.get("url"),
+        method: u.searchParams.get("method") || "GET",
+        body: u.searchParams.get("body") ? JSON.parse(u.searchParams.get("body")) : null,
+        auth: u.searchParams.get("auth"),
       };
     }
 
-    const {
-      url: targetUrl,
-      method = "POST",
-      body,
-      authorization,
-    } = requestData;
-
-    if (!targetUrl) {
-      return new Response(
-        JSON.stringify({ error: "URL parameter is required" }),
-        {
-          status: 400,
-          headers: { "Content-Type": "application/json", ...corsHeaders },
-        }
-      );
+    if (!data.url) {
+      return new Response(JSON.stringify({ error: "url is required" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json", ...corsHeaders },
+      });
     }
 
-    // Make the authenticated request
-    const response = await makeAuthenticatedRequest(targetUrl, {
-      method,
-      body,
-      authorization,
+    const resp = await makeApiRequest(data.url, {
+      method: data.method || "GET",
+      body: data.body,
+      authorization: data.auth,
+      useFullUrl: data.url.startsWith("http"),
     });
 
-    const responseData = await response.text();
-
-    return new Response(responseData, {
-      status: response.status,
-      headers: {
-        "Content-Type": "application/json",
-        ...corsHeaders,
-      },
+    const respBody = await resp.text();
+    return new Response(respBody, {
+      status: resp.status,
+      headers: { "Content-Type": "application/json", ...corsHeaders },
     });
-  } catch (error) {
+  } catch (e) {
     return new Response(
-      JSON.stringify({
-        error: "Request failed",
-        message: error.message,
-      }),
-      {
-        status: 500,
-        headers: { "Content-Type": "application/json", ...corsHeaders },
-      }
+      JSON.stringify({ error: e.message }),
+      { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
     );
   }
 }
 
-export default {
-  fetch: handleRequest,
-};
+export default { fetch: handleRequest };
