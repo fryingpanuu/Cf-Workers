@@ -1,0 +1,36 @@
+name: Auto-Sync IMDb Cookies to Cloudflare KV
+
+on:
+  schedule:
+    # Runs every 25 minutes in the cloud 24/7
+    - cron: "*/25 * * * *"
+  workflow_dispatch: # Allows manual 1-click execution in GitHub Actions UI
+  push:
+    branches:
+      - main
+    paths:
+      - "scripts/**"
+      - ".github/workflows/sync-cookies.yml"
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+
+      - name: Install Dependencies
+        run: npm install --include=dev
+
+      - name: Run Cloud Cookie Sync
+        env:
+          WORKER_URL: "https://meta.1proxy.workers.dev"
+        run: node scripts/sync-cookies.mjs

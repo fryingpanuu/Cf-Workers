@@ -7,9 +7,19 @@
     "start": "wrangler dev",
     "deploy": "wrangler publish",
     "start:dob": "wrangler dev --config wrangler.dob-worker.toml",
-    "deploy:dob": "wrangler deploy --config wrangler.dob-worker.toml"
+    "deploy:dob": "wrangler deploy --config wrangler.dob-worker.toml",
+    "start:imdb": "wrangler dev --config wrangler.imdb-worker.toml --remote",
+    "deploy:imdb": "wrangler deploy --config wrangler.imdb-worker.toml",
+    "sync:cookies": "node scripts/sync-cookies.mjs",
+    "sync:auto": "node scripts/sync-cookies.mjs --daemon"
+  },
+  "dependencies": {
+    "@cloudflare/puppeteer": "^0.0.14"
   },
   "devDependencies": {
+    "puppeteer-core": "^25.11.0",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
     "wrangler": "^3.0.0"
   }
 }
