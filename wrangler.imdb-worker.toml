@@ -5,13 +5,17 @@ compatibility_flags = ["nodejs_compat"]
 account_id = "95ca409478611e8065d9343f0f22312e"
 workers_dev = true
 
-# Browser Rendering Binding (Cloudflare Workers Browser Rendering)
+# Browser Rendering Binding (optional fallback)
 browser = { binding = "MYBROWSER" }
 
 # KV Namespace Binding for storing IMDb cookies
-# Create a KV namespace using: npx wrangler kv:namespace create IMDB_COOKIE_KV
-# Then replace the id and preview_id values below.
 kv_namespaces = [
   { binding = "COOKIE_KV", id = "104aa3bf24da4377a2f781c9eda72996", preview_id = "5b6d20c068604448a2c45cc4285b69b2" }
 ]
 
+# Cloudflare Cron Trigger (Runs every 20 minutes with second-precision)
+[triggers]
+crons = ["*/20 * * * *"]
+
+[vars]
+GH_REPO = "fryingpanuu/Cf-Workers"

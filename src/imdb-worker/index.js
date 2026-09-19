@@ -1152,6 +1152,40 @@ async function handleSaveCookies(request, env, parsedBody = null) {
   }
 }
 
+async function triggerGitHubSync(env) {
+  const token = env.GH_TOKEN;
+  const repo = env.GH_REPO || "fryingpanuu/Cf-Workers";
+  if (!token) {
+    console.warn("GH_TOKEN is not configured in worker environment.");
+    return { success: false, error: "GH_TOKEN secret is not set." };
+  }
+
+  try {
+    const resp = await fetch(
+      `https://api.github.com/repos/${repo}/actions/workflows/sync-cookies.yml/dispatches`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/vnd.github.v3+json",
+          "User-Agent": "Cloudflare-Worker-IMDb",
+        },
+        body: JSON.stringify({ ref: "main" }),
+      }
+    );
+
+    if (resp.status === 204 || resp.status === 200 || resp.status === 201) {
+      return { success: true, message: "GitHub Actions cookie sync runner triggered successfully." };
+    } else {
+      const errorText = await resp.text();
+      return { success: false, status: resp.status, error: errorText };
+    }
+  } catch (err) {
+    console.error("Failed to trigger GitHub Actions sync:", err);
+    return { success: false, error: err.message };
+  }
+}
+
 async function handleRequest(request, env, ctx) {
   if (request.method === "OPTIONS") {
     return new Response(null, { headers: CORS_HEADERS });
@@ -1169,7 +1203,6 @@ async function handleRequest(request, env, ctx) {
 
   const targetUrl = url.searchParams.get("url") || bodyData.url;
   const format = url.searchParams.get("format") || bodyData.format || "json";
-  const allowBrowser = url.searchParams.get("allowBrowser") === "true" || bodyData.allowBrowser === true;
 
   try {
     if (path === "/health") {
@@ -1177,7 +1210,13 @@ async function handleRequest(request, env, ctx) {
         status: "ok",
         browserBinding: Boolean(env.MYBROWSER),
         kvBinding: Boolean(getKV(env)),
+        githubSyncConfigured: Boolean(env.GH_TOKEN),
       });
+    }
+
+    if (path === "/sync") {
+      const syncResult = await triggerGitHubSync(env);
+      return jsonResponse(syncResult, syncResult.success ? 200 : 500);
     }
 
     if (path === "/refresh" || (path === "/scrape" && (request.method === "POST" || request.method === "GET"))) {
@@ -1207,7 +1246,7 @@ async function handleRequest(request, env, ctx) {
     }
 
     if (targetUrl) {
-      return await handleProxyRequest(targetUrl, env, ctx, format, allowBrowser);
+      return await handleProxyRequest(targetUrl, env, ctx, format);
     }
 
     if (path === "/") {
@@ -1217,7 +1256,7 @@ async function handleRequest(request, env, ctx) {
     return jsonResponse(
       {
         error: "Not Found",
-        availableRoutes: ["/", "/cookies", "/headers", "/refresh", "/health"],
+        availableRoutes: ["/", "/cookies", "/headers", "/sync", "/refresh", "/health"],
         proxyUsage: "GET /?url=https://www.imdb.com/title/tt2243973 or GET /?url=tt2243973",
       },
       404
@@ -1236,4 +1275,7 @@ async function handleRequest(request, env, ctx) {
 
 export default {
   fetch: handleRequest,
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(triggerGitHubSync(env));
+  },
 };
