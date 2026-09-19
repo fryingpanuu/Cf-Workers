@@ -7,7 +7,7 @@ const CHROME_PATHS = [
   "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
   "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
   "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
-  // Linux (Ubuntu / Server / Docker)
+  // Linux (Ubuntu / GitHub Actions Runner)
   "/usr/bin/google-chrome",
   "/usr/bin/google-chrome-stable",
   "/usr/bin/chromium",
@@ -105,23 +105,77 @@ async function performSync(workerUrl = DEFAULT_WORKER_URL) {
   }
 }
 
+async function dispatchNextWorkflow() {
+  const token = process.env.GITHUB_TOKEN;
+  const repo = process.env.GITHUB_REPOSITORY;
+  if (!token || !repo) {
+    return;
+  }
+
+  console.log(`\n🚀 [Self-Chaining] Dispatching next GitHub Actions runner for ${repo}...`);
+  try {
+    const resp = await fetch(
+      `https://api.github.com/repos/${repo}/actions/workflows/sync-cookies.yml/dispatches`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/vnd.github.v3+json",
+          "User-Agent": "IMDb-Cookie-Sync-Daemon",
+        },
+        body: JSON.stringify({ ref: "main" }),
+      }
+    );
+
+    if (resp.status === 204 || resp.status === 200 || resp.status === 201) {
+      console.log("✅ Successor cloud runner successfully dispatched! Starting now in cloud.");
+    } else {
+      const text = await resp.text();
+      console.warn(`⚠️ Dispatch returned status ${resp.status}: ${text}`);
+    }
+  } catch (err) {
+    console.error("❌ Failed to dispatch successor workflow:", err.message);
+  }
+}
+
 async function main() {
   const isDaemon = process.argv.includes("--daemon") || process.argv.includes("-d");
+  const autoChain = process.argv.includes("--auto-chain");
   const intervalArg = process.argv.find((arg) => arg.startsWith("--interval="));
   const intervalMinutes = intervalArg
     ? parseInt(intervalArg.split("=")[1], 10) || SYNC_INTERVAL_MINUTES
     : SYNC_INTERVAL_MINUTES;
 
+  const maxHoursArg = process.argv.find((arg) => arg.startsWith("--max-hours="));
+  const maxHours = maxHoursArg ? parseFloat(maxHoursArg.split("=")[1]) : 0;
+  const stopTimestamp = maxHours > 0 ? Date.now() + maxHours * 3600 * 1000 : 0;
+
   console.log("==================================================");
   console.log("🎬 IMDb Cookie Sync Service");
   console.log(`🎯 Target Worker: ${DEFAULT_WORKER_URL}`);
-  console.log(`⚙️  Mode: ${isDaemon ? `Continuous Loop (every ${intervalMinutes} mins)` : "One-shot Sync"}`);
+  console.log(
+    `⚙️  Mode: ${
+      isDaemon
+        ? `Continuous Loop (every ${intervalMinutes} mins${maxHours > 0 ? `, for ${maxHours}h` : ""}${
+            autoChain ? ", self-chaining" : ""
+          })`
+        : "One-shot Sync"
+    }`
+  );
   console.log("==================================================\n");
 
   const success = await performSync();
 
   if (isDaemon) {
     while (true) {
+      if (stopTimestamp > 0 && Date.now() >= stopTimestamp) {
+        console.log(`\n🏁 Reached execution window end (${maxHours}h).`);
+        if (autoChain) {
+          await dispatchNextWorkflow();
+          await new Promise((r) => setTimeout(r, 30000));
+        }
+        break;
+      }
       console.log(`\n⏳ Next sync scheduled in ${intervalMinutes} minutes...`);
       await new Promise((r) => setTimeout(r, intervalMinutes * 60 * 1000));
       try {

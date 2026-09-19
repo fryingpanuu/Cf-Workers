@@ -1,12 +1,29 @@
-name: Sync IMDb Cookies to Cloudflare KV
+name: Auto-Sync IMDb Cookies to Cloudflare KV
 
 on:
-  workflow_dispatch: # Manual 1-click execution when needed
+  schedule:
+    # Backup trigger every 4 hours
+    - cron: "0 */4 * * *"
+  workflow_dispatch: # Allows manual 1-click execution or auto-chaining
+  push:
+    branches:
+      - main
+    paths:
+      - "scripts/**"
+      - ".github/workflows/sync-cookies.yml"
+
+concurrency:
+  group: sync-cookies-group
+  cancel-in-progress: false
+
+permissions:
+  actions: write
+  contents: read
 
 jobs:
   sync:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 360 # 6 hours max GitHub runner timeout
 
     steps:
       - name: Checkout Repository
@@ -21,7 +38,9 @@ jobs:
       - name: Install Dependencies
         run: npm install --include=dev
 
-      - name: Sync Cookies (One-shot)
+      - name: Run Self-Chaining Continuous Cloud Cookie Sync
         env:
           WORKER_URL: "https://meta.1proxy.workers.dev"
-        run: node scripts/sync-cookies.mjs
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node scripts/sync-cookies.mjs --daemon --interval=20 --max-hours=4.2 --auto-chain
