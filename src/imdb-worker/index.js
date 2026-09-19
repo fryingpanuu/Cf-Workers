@@ -534,13 +534,24 @@ async function saveCachedPage(env, targetUrl, format, data, isJson = true) {
   const kv = getKV(env);
   if (!kv || !data) return;
 
-  // Never cache 403 Forbidden or empty error data
-  if (typeof data === "string" && (data.includes("403 Forbidden") || data.includes("<title>403"))) {
+  // Strictly forbid caching 403 Forbidden, Human Verification, suggestion, or incomplete/error data
+  if (
+    typeof data === "string" &&
+    (data.includes("403 Forbidden") ||
+      data.includes("<title>403") ||
+      data.includes("Human Verification") ||
+      data.includes("AwsWafIntegration"))
+  ) {
     return;
   }
   if (
     typeof data === "object" &&
-    ((data.html && data.html.includes("403 Forbidden")) || (data.warning && !data.id && !data.title))
+    (data.success === false ||
+      data.source === "imdb_suggestion_api" ||
+      !data.title ||
+      data.html?.includes("403 Forbidden") ||
+      data.html?.includes("Human Verification") ||
+      (data.warning && !data.id && !data.title))
   ) {
     return;
   }
@@ -577,71 +588,6 @@ function buildCachedResponse(data, isJson, extraHeaders = {}) {
       ...extraHeaders,
     },
   });
-}
-
-async function fetchFromImdbSuggestions(targetUrl) {
-  const tconst = extractTconst(targetUrl);
-  if (!tconst) return null;
-
-  try {
-    const resp = await fetch(`https://v3.sg.media-imdb.com/suggestion/x/${tconst}.json`, {
-      headers: {
-        "User-Agent": DEFAULT_USER_AGENT,
-        Accept: "application/json",
-      },
-    });
-
-    if (resp.status === 200) {
-      const json = await resp.json();
-      const item = json?.d?.find((x) => x.id === tconst) || json?.d?.[0];
-      if (item) {
-        return {
-          success: true,
-          id: item.id,
-          title: item.l,
-          originalTitle: item.l,
-          type: item.qid || (item.q === "TV series" ? "tvSeries" : "movie"),
-          isSeries: item.q === "TV series" || item.qid === "tvSeries",
-          year: item.y || null,
-          endYear: item.yr
-            ? item.yr.includes("-")
-              ? Number(item.yr.split("-")[1]) || null
-              : null
-            : null,
-          releaseDate: item.y ? `${item.y}-01-01` : null,
-          runtime: null,
-          runtimeSeconds: null,
-          rating: null,
-          voteCount: null,
-          metascore: null,
-          certificate: null,
-          genres: [],
-          keywords: [],
-          plot: null,
-          poster: item.i
-            ? {
-                id: null,
-                url: item.i.imageUrl,
-                width: item.i.width,
-                height: item.i.height,
-                caption: null,
-              }
-            : null,
-          credits: {
-            stars: item.s
-              ? item.s.split(",").map((name) => ({ id: null, name: name.trim() }))
-              : [],
-          },
-          cast: item.s
-            ? item.s.split(",").map((name) => ({ id: null, name: name.trim(), characters: [] }))
-            : [],
-          source: "imdb_suggestion_api",
-          note: "Zero-browser mode. To fetch complete NextData (ratings, genres, plot, full cast), upload your browser cookies to /cookies.",
-        };
-      }
-    }
-  } catch {}
-  return null;
 }
 
 async function scrapePageWithBrowser(targetUrl, env, format = "json") {
@@ -825,28 +771,16 @@ async function fetchAndFormatPage(targetUrl, env, ctx, format = "json") {
     }
   }
 
-  // 3. Fallback: Suggestion API if browser quota is exhausted
-  if (format !== "html") {
-    const suggestionData = await fetchFromImdbSuggestions(targetUrl);
-    if (suggestionData) {
-      return {
-        success: true,
-        isJson: true,
-        data: suggestionData,
-      };
-    }
-  }
-
   return {
     success: false,
     response: jsonResponse(
       {
         success: false,
         error:
-          "IMDb protected by AWS WAF. Sync cookies via GitHub Actions or visit /cookies UI.",
+          "IMDb access restricted by AWS WAF and cookies need refresh. GitHub Actions is syncing cookies automatically, or you can run 'npm run sync:cookies' / paste at /cookies.",
         targetUrl,
       },
-      403
+      503
     ),
   };
 }
