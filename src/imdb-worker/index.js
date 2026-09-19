@@ -650,29 +650,31 @@ async function scrapePageWithBrowser(targetUrl, env, format = "json") {
     const page = await browser.newPage();
     let capturedHeaders = {};
 
+    // Block images, fonts, stylesheets, and media to make browser scrape 10x faster & save quota
+    await page.setRequestInterception(true);
     page.on("request", (req) => {
+      const type = req.resourceType();
       const url = req.url();
-      if (url.includes("imdb.com") && Object.keys(capturedHeaders).length === 0) {
-        capturedHeaders = req.headers();
+      if (type === "image" || type === "font" || type === "stylesheet" || type === "media") {
+        req.abort();
+      } else {
+        if (url.includes("imdb.com") && Object.keys(capturedHeaders).length === 0) {
+          capturedHeaders = req.headers();
+        }
+        req.continue();
       }
     });
 
     await applyStealthToPage(page);
 
-    await page.goto(IMDB_URL, {
+    await page.goto(targetUrl, {
       waitUntil: "domcontentloaded",
       timeout: 15000,
     }).catch(() => {});
 
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    await new Promise((resolve) => setTimeout(resolve, 1500));
 
-    await page.goto(targetUrl, {
-      waitUntil: "domcontentloaded",
-      timeout: 20000,
-    }).catch(() => {});
-
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-
+    // Capture fresh cookies acquired during page load and save to KV
     const pageCookies = await getAllCookies(page);
     if (pageCookies.length >= 2) {
       const resolvedUserAgent = capturedHeaders["user-agent"] || DEFAULT_USER_AGENT;
@@ -750,9 +752,10 @@ async function scrapePageWithBrowser(targetUrl, env, format = "json") {
   }
 }
 
-async function fetchAndFormatPage(targetUrl, env, ctx, format = "json", allowBrowser = false) {
+async function fetchAndFormatPage(targetUrl, env, ctx, format = "json") {
   const cached = await getCookiesFromKV(env);
 
+  // 1. Try fast HTTP fetch using KV cookies
   if (cached && cached.cookieString && cached.count > 0) {
     const reqHeaders = {
       "User-Agent": cached.userAgent || DEFAULT_USER_AGENT,
@@ -779,7 +782,8 @@ async function fetchAndFormatPage(targetUrl, env, ctx, format = "json", allowBro
         if (
           !responseText.includes("<title>403 Forbidden</title>") &&
           !responseText.includes("<h1>403 Forbidden</h1>") &&
-          !responseText.includes("AwsWafIntegration")
+          !responseText.includes("AwsWafIntegration") &&
+          !responseText.includes("<title>Human Verification</title>")
         ) {
           if (format === "html") {
             return {
@@ -809,7 +813,19 @@ async function fetchAndFormatPage(targetUrl, env, ctx, format = "json", allowBro
     } catch {}
   }
 
-  // Fallback 1: Fast zero-browser IMDb suggestions API (No browser quota used!)
+  // 2. HTTP fetch failed or cookies expired -> Launch browser to scrape full metadata & refresh KV cookies
+  if (env.MYBROWSER) {
+    try {
+      const browserResult = await scrapePageWithBrowser(targetUrl, env, format);
+      if (browserResult && browserResult.success) {
+        return browserResult;
+      }
+    } catch (browserError) {
+      console.warn("Browser scraping failed or quota reached:", browserError.message);
+    }
+  }
+
+  // 3. Fallback: Suggestion API if browser quota is exhausted
   if (format !== "html") {
     const suggestionData = await fetchFromImdbSuggestions(targetUrl);
     if (suggestionData) {
@@ -821,32 +837,13 @@ async function fetchAndFormatPage(targetUrl, env, ctx, format = "json", allowBro
     }
   }
 
-  // Fallback 2: Headless browser rendering ONLY IF explicitly requested
-  if (allowBrowser && env.MYBROWSER) {
-    try {
-      return await scrapePageWithBrowser(targetUrl, env, format);
-    } catch (error) {
-      return {
-        success: false,
-        response: jsonResponse(
-          {
-            success: false,
-            error: `Browser scraping failed: ${error.message}. You can manually upload fresh cookies using POST /cookies.`,
-            targetUrl,
-          },
-          503
-        ),
-      };
-    }
-  }
-
   return {
     success: false,
     response: jsonResponse(
       {
         success: false,
         error:
-          "IMDb protected by AWS WAF and no valid cookies found in KV. Upload your cookies at https://meta.1proxy.workers.dev/cookies to enable instant full metadata extraction.",
+          "IMDb protected by AWS WAF. Sync cookies via GitHub Actions or visit /cookies UI.",
         targetUrl,
       },
       403
@@ -886,6 +883,7 @@ async function handleProxyRequest(rawTargetUrl, env, ctx, format = "json", allow
     (typeof cachedPage.data === "string"
       ? cachedPage.data.includes("403 Forbidden")
       : cachedPage.data?.html?.includes("403 Forbidden") ||
+        cachedPage.data?.source === "imdb_suggestion_api" ||
         (cachedPage.data?.warning && !cachedPage.data?.id && !cachedPage.data?.title))
   ) {
     const kv = getKV(env);
@@ -920,7 +918,7 @@ async function handleProxyRequest(rawTargetUrl, env, ctx, format = "json", allow
   }
 
   // 2. Cache miss -> Fetch and format page, cache result, and return
-  const result = await fetchAndFormatPage(targetUrl, env, ctx, format, allowBrowser);
+  const result = await fetchAndFormatPage(targetUrl, env, ctx, format);
   if (!result.success) {
     return (
       result.response ||

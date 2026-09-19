@@ -38,7 +38,7 @@ async function performSync(workerUrl = DEFAULT_WORKER_URL) {
   const executablePath = findExecutable();
   const startTime = performance.now();
 
-  console.log(`[1/4] 🚀 Launching Chrome engine (${executablePath})...`);
+  console.log(`[1/4] 🚀 Launching Chrome (${executablePath})...`);
 
   const browser = await puppeteer.launch({
     executablePath,
@@ -112,23 +112,38 @@ async function main() {
     ? parseInt(intervalArg.split("=")[1], 10) || SYNC_INTERVAL_MINUTES
     : SYNC_INTERVAL_MINUTES;
 
+  const maxHoursArg = process.argv.find((arg) => arg.startsWith("--max-hours="));
+  const maxHours = maxHoursArg ? parseFloat(maxHoursArg.split("=")[1]) : 0;
+  const stopTimestamp = maxHours > 0 ? Date.now() + maxHours * 3600 * 1000 : 0;
+
   console.log("==================================================");
   console.log("🎬 IMDb Cookie Sync Service");
   console.log(`🎯 Target Worker: ${DEFAULT_WORKER_URL}`);
-  console.log(`⚙️  Mode: ${isDaemon ? `Continuous Daemon (every ${intervalMinutes} mins)` : "One-shot Sync"}`);
+  console.log(
+    `⚙️  Mode: ${
+      isDaemon
+        ? `Continuous Loop (every ${intervalMinutes} mins${maxHours > 0 ? `, for ${maxHours}h` : ""})`
+        : "One-shot Sync"
+    }`
+  );
   console.log("==================================================\n");
 
   const success = await performSync();
 
   if (isDaemon) {
-    console.log(`\n⏳ Daemon running. Next sync in ${intervalMinutes} minutes...`);
-    setInterval(async () => {
+    while (true) {
+      if (stopTimestamp > 0 && Date.now() >= stopTimestamp) {
+        console.log(`\n🏁 Completed ${maxHours}h execution window. Exiting gracefully.`);
+        break;
+      }
+      console.log(`\n⏳ Next sync scheduled in ${intervalMinutes} minutes...`);
+      await new Promise((r) => setTimeout(r, intervalMinutes * 60 * 1000));
       try {
         await performSync();
       } catch (err) {
         console.error(`[${new Date().toLocaleTimeString()}] Error in sync loop:`, err.message);
       }
-    }, intervalMinutes * 60 * 1000);
+    }
   } else {
     if (!success) {
       process.exit(1);
